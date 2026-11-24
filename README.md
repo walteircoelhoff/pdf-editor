@@ -17,6 +17,8 @@ Abra o endereço mostrado pelo Vite, normalmente `http://127.0.0.1:5173`. Não a
 
 - Abrir PDFs por seleção de arquivos ou arrastando para a tela; selecionar vários para unir.
 - Acrescentar outros PDFs ao documento atual.
+- Reconhecer trechos de texto existentes e substituí-los diretamente no conteúdo da página, sem deixar o trecho antigo na busca/cópia do PDF exportado.
+- Abrir a caixa de digitação no próprio ponto clicado, tanto para editar quanto para inserir texto.
 - Adicionar texto com acentos, cor, tamanho e várias linhas.
 - Destacar áreas, desenhar à mão livre e criar retângulos.
 - Inserir imagens PNG/JPEG e ajustar sua largura com proporção preservada.
@@ -30,10 +32,10 @@ Abra o endereço mostrado pelo Vite, normalmente `http://127.0.0.1:5173`. Não a
 ## Como editar
 
 1. Abra um PDF ou escolha o exemplo da tela inicial.
-2. Em **Texto**, escreva no painel **Ajustes** e clique na folha para inserir. Selecione um texto já inserido ou dê dois cliques nele para alterar seu conteúdo no painel.
-3. Em **Marca-texto**, **Retângulo** ou **Desenhar**, arraste sobre a folha.
+2. Em **Editar texto**, clique em um dos trechos reconhecidos na folha. Altere o conteúdo na caixa que abre ali e clique em **Aplicar**, ou use Ctrl/Cmd+Enter. Para remover o trecho, apague seu conteúdo e aplique. **Cancelar** ou Escape mantém o texto anterior.
+3. Em **Inserir texto**, clique no ponto desejado e digite diretamente na caixa aberta sobre a página. Em **Marca-texto**, **Retângulo** ou **Desenhar**, arraste sobre a folha.
 4. Em **Imagem**, escolha um PNG/JPEG e clique na folha. Com a imagem selecionada, ajuste a largura no painel.
-5. Em **Selecionar**, arraste uma anotação para movê-la. Use **Excluir anotação** ou a tecla Delete.
+5. Em **Selecionar**, arraste uma anotação para movê-la. Dê dois cliques em um texto para abrir sua edição no local. Use **Excluir anotação** ou a tecla Delete para excluir a anotação selecionada.
 6. Escolha uma miniatura e use os controles de **Página atual** para organizar o documento. **Anterior** e **Próxima** movem a página na ordem do arquivo.
 7. Clique em **Baixar PDF** antes de fechar ou recarregar a aba.
 
@@ -79,13 +81,17 @@ npm test
 npm audit
 ```
 
-A suíte verifica upload, textos com acentos, destaque, desenho, imagem, histórico, movimento/edição de anotações, organização e união de páginas, exportação reaberta por um leitor PDF, coordenadas nas quatro rotações com CropBox deslocado, arquivo inválido, caracteres sem suporte e layout de celular. Screenshots ficam em `test-results/`, ignorado pelo Git.
+A suíte verifica upload, caixa de digitação no ponto clicado, substituição e exclusão de texto original, ausência do trecho antigo na extração do PDF exportado, preservação das outras páginas, texto em Form XObject, acentos, destaque, desenho, imagem, histórico, movimento/edição de anotações, organização e união de páginas, coordenadas nas quatro rotações com CropBox deslocado, arquivo inválido, caracteres sem suporte, layout de celular e o build sob um caminho de GitHub Pages. Screenshots ficam em `test-results/`, ignorado pelo Git.
 
 ## Privacidade e limites
 
 - Os documentos e imagens são processados em memória no navegador, sem envio a servidor e sem persistência em localStorage/IndexedDB. A página não inclui analytics. O servidor de hospedagem recebe as requisições normais dos arquivos do site.
 - Não existe salvamento automático ou recuperação de sessão. Fechar/recarregar perde o trabalho ainda não baixado; o navegador pode mostrar o aviso de alterações pendentes.
-- A edição é por sobreposição: **não substitui nem remove o texto original**, não tem OCR, conversão para Word, compressão ou edição de formulários.
+- **Editar texto** substitui um objeto de texto reconhecido: o objeto anterior é removido e o conteúdo novo é escrito na mesma posição de referência. As outras páginas e os objetos não editados continuam sendo copiados do PDF original; não há rasterização da página.
+- A edição acontece por trechos/objetos do PDF, que podem ser menores ou maiores que uma palavra ou linha. Não existe reorganização automática dos parágrafos. Um texto mais longo pode ocupar a área de outro conteúdo: confira o resultado.
+- A fonte dos trechos alterados é **Noto Sans regular**. Cor, tamanho aproximado, posição de referência e orientação são recuperados do original; fontes especiais, negrito, itálico, espaçamento, escalas desiguais e efeitos de texto podem mudar. A aparência exata não é garantida.
+- Não há OCR. Digitalizações, texto convertido em curvas e objetos sem texto Unicode recuperável não são editáveis como texto. A interface informa quando não encontra trechos editáveis. Objetos de texto compartilhados em múltiplas instâncias dentro da mesma página podem ficar indisponíveis para evitar alterar outras ocorrências.
+- Não há conversão para Word, compressão ou edição de formulários. Esta função não constitui ferramenta de remoção forense de informações: recursos, metadados e anexos podem conter dados adicionais.
 - Retângulos e marcações **não são tarja segura nem removem informações do PDF**. Não os use para ocultar dados confidenciais.
 - A exportação gera um novo arquivo. **Assinaturas digitais não são preservadas como válidas.** Formulários, anexos, índices, scripts, links internos e outros recursos de documento não têm garantia de preservação. Guarde o original.
 - Girar uma página incorpora suas anotações ao conteúdo dela. Depois disso, essas anotações deixam de ser objetos editáveis individualmente. Desfazer restaura a página anterior e seus objetos.
@@ -99,6 +105,9 @@ A suíte verifica upload, textos com acentos, destaque, desenho, imagem, histór
 ```text
 src/main.js                   Interface, sessão e interações
 src/pdf.js                    Cópia das páginas e exportação de anotações
+src/text-engine.js            Solicitações e cache de leitura/remoção de texto
+src/text-engine.worker.js     PDFium em worker: extrai e remove objetos de texto
+src/inline-editor.css         Caixa de edição sobre a página
 src/style.css                 Layout e estilos responsivos
 scripts/prepare-assets.mjs    Recursos locais do leitor PDF e licenças
 public/fonts/                 Fonte Noto Sans e licença OFL
@@ -106,4 +115,4 @@ tests/editor.spec.js          Verificações reais no navegador
 .github/workflows/pages.yml   Publicação estática
 ```
 
-[PDF.js](https://github.com/mozilla/pdf.js) renderiza as páginas, e [pdf-lib](https://pdf-lib.js.org/docs/api/classes/pdfdocument) copia páginas e grava as alterações. As coordenadas visuais são convertidas pelo viewport do PDF.js para respeitar rotação e recorte da folha. [fontkit](https://github.com/Hopding/fontkit) incorpora a fonte; [Lucide](https://lucide.dev/) fornece os ícones; [Vite](https://vite.dev/) prepara o site. As licenças dessas dependências continuam pertencendo aos respectivos autores.
+[PDF.js](https://github.com/mozilla/pdf.js) renderiza as páginas; [PDFium via EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer) extrai os objetos de texto e remove os trechos substituídos em um worker local; [pdf-lib](https://pdf-lib.js.org/docs/api/classes/pdfdocument) copia páginas e grava o novo conteúdo. As coordenadas visuais são convertidas pelo viewport do PDF.js para respeitar rotação e recorte da folha. [fontkit](https://github.com/Hopding/fontkit) incorpora a fonte; [Lucide](https://lucide.dev/) fornece os ícones; [Vite](https://vite.dev/) prepara o site. As licenças dessas dependências continuam pertencendo aos respectivos autores e são incluídas no build.

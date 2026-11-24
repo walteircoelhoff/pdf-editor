@@ -18,7 +18,9 @@ const licenses = {
   '@pdf-lib/upng': 'LICENSE',
   '@pdf-lib/standard-fonts': 'LICENSE.md',
   '@pdf-lib/fontkit': 'README.md',
+  '@embedpdf/pdfium': 'LICENSE',
 };
 for (const [name, license] of Object.entries(licenses)) {
   await cp(resolve(root, 'node_modules', name, license), resolve(root, 'public/licenses', `${name.replaceAll('/', '-')}.txt`));
 }
+await cp(resolve(root,'node_modules/@embedpdf/pdfium/LICENSE.pdfium'),resolve(root,'public/licenses/pdfium.txt'));

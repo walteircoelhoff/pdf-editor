@@ -1,4 +1,5 @@
 import { PDFDocument, degrees, rgb } from 'pdf-lib';
+import { strippedBytes } from './text-engine.js';
 
 export const uid = () => crypto.randomUUID();
 export const color = (hex) => rgb(...hex.replace('#', '').match(/../g).map((v) => parseInt(v, 16) / 255));
@@ -13,7 +14,9 @@ export async function exportDocument(pages, sources, fontBytes) {
   const font = await result.embedFont(fontBytes, { subset: true });
   for (const page of pages) {
     const source = sources.get(page.source);
-    const [output] = await result.copyPages(source.pdf, [page.index]);
+    const edited = page.items.some((i) => i.originalKey);
+    const input = edited ? await PDFDocument.load(await strippedBytes(page,source)) : source.pdf;
+    const [output] = await result.copyPages(input, [page.index]);
     output.setRotation(degrees(page.rotation));
     result.addPage(output);
     const original = await source.viewer.getPage(page.index + 1);
@@ -25,11 +28,12 @@ export async function exportDocument(pages, sources, fontBytes) {
     for (const item of page.items) {
       const ink = color(item.color || '#20314f');
       if (item.type === 'text') {
+        if (!item.text) continue;
         const unsupported = [...item.text].find((character) => !font.getCharacterSet().includes(character.codePointAt(0)) && character !== '\n');
         if (unsupported) throw new Error(`A fonte não suporta “${unsupported}”. Remova esse caractere do texto para exportar.`);
         result.getPages().at(-1).drawText(item.text, {
           ...point(item.x, item.y + item.size * 1.07), font, size: item.size,
-          lineHeight: item.size * 1.4, color: ink, rotate: degrees(page.rotation),
+          lineHeight: item.size * 1.4, color: ink, rotate: degrees(page.rotation - (item.angle || 0)),
         });
       } else if (item.type === 'draw') {
         for (let i = 1; i < item.points.length; i++) {

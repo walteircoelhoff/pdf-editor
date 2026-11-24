@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { PDFDocument, degrees, StandardFonts } from 'pdf-lib';
+import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 
@@ -19,7 +19,131 @@ async function upload(page, payload = {}) {
   await expect(page.locator('#export')).toBeEnabled();
   await expect(page.locator('#page-canvas')).toBeVisible();
   await expect.poll(() => page.locator('#page-canvas').evaluate((el) => el.width)).toBeGreaterThan(0);
+  await expect(page.locator('#text-reading-status')).not.toContainText('Lendo');
 }
+
+test('substitui texto original, remove o antigo da extração e preserva a outra página', async ({ page }) => {
+  await page.goto('/');
+  await upload(page);
+  await expect(page.locator('[data-original]')).toHaveCount(1);
+  await page.locator('[data-original]').click();
+  await expect(page.locator('#inline-editor')).toBeVisible();
+  await expect(page.locator('#text-content')).toHaveValue('Original page 1');
+  await page.locator('#text-content').fill('Documento revisado — João');
+  await page.locator('#apply-text').click();
+  await expect(page.locator('#annotations text')).toContainText('Documento revisado');
+  const { data } = await download(page);
+  const texts = await extract(page,data);
+  expect(texts[0]).toContain('Documento revisado — João');
+  expect(texts[0]).not.toContain('Original page 1');
+  expect(texts[1]).toContain('Original page 2');
+  await page.locator('#undo').click();
+  await expect(page.locator('[data-original]')).toHaveCount(1);
+  await page.locator('#redo').click();
+  await expect(page.locator('#annotations text')).toContainText('Documento revisado');
+  await page.screenshot({ path:'test-results/texto-original-editado.png',fullPage:true });
+});
+
+test('inserção abre no ponto clicado, cancelar preserva a página e baixar aplica o rascunho', async ({ page }) => {
+  await page.goto('/');
+  await upload(page,{ count:1 });
+  await page.getByRole('button',{ name:'Inserir texto',exact:true }).click();
+  const b = await page.locator('#annotations').boundingBox();
+  await page.locator('#annotations').click({ position:{ x:80,y:180 } });
+  const input = await page.locator('#inline-editor').boundingBox();
+  expect(input.x).toBeCloseTo(b.x+80,0);
+  expect(input.y).toBeCloseTo(b.y+180,0);
+  await page.locator('#text-content').fill('Descartar');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#annotations text')).toHaveCount(0);
+  await page.locator('#annotations').click({ position:{ x:80,y:180 } });
+  await page.locator('#text-content').fill('Aplicar ao baixar');
+  const { data } = await download(page);
+  expect((await extract(page,data))[0]).toContain('Aplicar ao baixar');
+});
+
+for (const rotation of [0,90,180,270]) test(`substituição de texto original com rotação ${rotation} e recorte mantém posição e orientação`,async ({ page }) => {
+  await page.goto('/');
+  await upload(page,{ count:1,rotation,crop:true });
+  await page.locator('[data-original]').click();
+  await page.locator('#text-content').fill('Substituído');
+  await page.keyboard.press('Control+Enter');
+  const { data } = await download(page);
+  const text = await extract(page,data);
+  expect(text[0]).toContain('Substituído');
+  expect(text[0]).not.toContain('Original page');
+  const geometry = await page.evaluate(async (bytes) => {
+    const pdfjs = await import('/node_modules/pdfjs-dist/build/pdf.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
+    const doc = await pdfjs.getDocument({ data:Uint8Array.from(bytes) }).promise;
+    const p = await doc.getPage(1);
+    const item = (await p.getTextContent()).items.find((i) => i.str === 'Substituído');
+    return item.transform;
+  },[...data]);
+  expect(geometry[4]).toBeCloseTo(70,1);
+  expect(geometry[5]).toBeCloseTo(700,1);
+  expect(geometry[1]).toBeCloseTo(0,1);
+  expect(geometry[2]).toBeCloseTo(0,1);
+});
+
+test('edita dois trechos dentro de um Form XObject e mantém desenhos e textos vizinhos',async ({ page }) => {
+  const inner = await PDFDocument.create();
+  const font = await inner.embedFont(StandardFonts.Helvetica);
+  const leaf = inner.addPage([400,400]);
+  leaf.drawRectangle({x:0,y:0,width:400,height:400,color:rgb(.8,.9,1)});
+  leaf.drawText('Primeiro trecho',{x:30,y:300,size:18,font});
+  leaf.drawText('Segundo trecho',{x:30,y:250,size:18,font});
+  leaf.drawText('Texto preservado',{x:30,y:200,size:18,font});
+  const doc = await PDFDocument.create();
+  const [form] = await doc.embedPdf(await inner.save());
+  doc.addPage([595,842]).drawPage(form,{x:40,y:350,width:400,height:400});
+  await page.goto('/');
+  await page.locator('#pdf-input').setInputFiles({name:'form.pdf',mimeType:'application/pdf',buffer:Buffer.from(await doc.save())});
+  await expect(page.locator('[data-original]')).toHaveCount(3);
+  await page.locator('[data-original]').filter({has:page.locator('title',{hasText:'Primeiro trecho'})}).click();
+  await page.locator('#text-content').fill('Primeiro revisado');
+  await page.locator('#apply-text').click();
+  await page.locator('[data-original]').filter({has:page.locator('title',{hasText:'Segundo trecho'})}).click();
+  await page.locator('#text-content').fill('Segundo revisado');
+  await page.locator('#apply-text').click();
+  const { data } = await download(page);
+  const text = (await extract(page,data))[0];
+  expect(text).toContain('Primeiro revisado');
+  expect(text).toContain('Segundo revisado');
+  expect(text).toContain('Texto preservado');
+  expect(text).not.toContain('Primeiro trecho');
+  expect(text).not.toContain('Segundo trecho');
+});
+
+test('apagar o texto original remove o conteúdo e desfazer restaura',async ({ page }) => {
+  await page.goto('/');
+  await upload(page,{ count:1 });
+  await page.locator('[data-original]').click();
+  await page.locator('#text-content').fill('');
+  await page.locator('#apply-text').click();
+  const { data } = await download(page);
+  expect((await extract(page,data))[0]).not.toContain('Original page');
+  await page.locator('#undo').click();
+  await expect(page.locator('[data-original]')).toHaveCount(1);
+});
+
+test('PDF digitalizado informa a ausência de texto editável e permite inserir no celular',async ({ page }) => {
+  const doc = await PDFDocument.create();
+  const image = await doc.embedPng(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=','base64'));
+  doc.addPage([595,842]).drawImage(image,{x:0,y:0,width:595,height:842});
+  await page.setViewportSize({ width:390,height:844 });
+  await page.goto('/');
+  await page.locator('#pdf-input').setInputFiles({name:'scan.pdf',mimeType:'application/pdf',buffer:Buffer.from(await doc.save())});
+  await expect(page.locator('#text-reading-status')).toContainText('Sem texto editável');
+  await page.getByRole('button',{name:'Inserir texto',exact:true}).click();
+  await page.locator('#annotations').click({position:{x:45,y:90}});
+  await page.locator('#text-content').fill('Digitado no local');
+  await expect(page.locator('#inline-editor')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:'test-results/caixa-no-local-mobile.png',fullPage:true});
+  await page.locator('#apply-text').click();
+  await expect(page.locator('#annotations text')).toContainText('Digitado no local');
+});
 async function drag(page, from, to) {
   const box = await page.locator('#annotations').boundingBox();
   await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
@@ -53,9 +177,10 @@ test('texto com acentos, marcação, desenho, imagem, histórico e exportação'
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Um novo olhar/ })).toBeVisible();
   await upload(page);
-  await page.getByRole('button', { name: 'Texto', exact: true }).click();
-  await page.locator('#text-content').fill('Revisão: João — ação e café');
+  await page.getByRole('button', { name: 'Inserir texto', exact: true }).click();
   await page.locator('#annotations').click({ position: { x: 60, y: 100 } });
+  await page.locator('#text-content').fill('Revisão: João — ação e café');
+  await page.locator('#apply-text').click();
   await expect(page.locator('#annotations text')).toContainText('Revisão: João');
   await page.getByRole('button', { name: 'Marca-texto', exact: true }).click();
   await drag(page, [.1, .25], [.6, .29]);
@@ -113,11 +238,12 @@ test('organiza, une, duplica, gira, exclui e desfaz páginas', async ({ page }) 
 for (const rotation of [0, 90, 180, 270]) test(`anotações exportadas mantêm a posição com rotação ${rotation} e CropBox`, async ({ page }) => {
   await page.goto('/');
   await upload(page, { rotation, crop: true, count: 1 });
-  await page.getByRole('button', { name: 'Texto', exact: true }).click();
-  await page.locator('#text-content').fill('Posição correta');
+  await page.getByRole('button', { name: 'Inserir texto', exact: true }).click();
   const layer = page.locator('#annotations');
   const box = await layer.boundingBox();
   await layer.click({ position: { x: box.width * .2, y: box.height * .3 } });
+  await page.locator('#text-content').fill('Posição correta');
+  await page.locator('#apply-text').click();
   const before = await layer.locator('text').evaluate((el) => ({ x: +el.getAttribute('x'), y: +el.getAttribute('y') }));
   const { data } = await download(page);
   const mapped = await page.evaluate(async (bytes) => {
@@ -136,9 +262,10 @@ for (const rotation of [0, 90, 180, 270]) test(`anotações exportadas mantêm a
 test('seleciona, move, edita e exclui anotações com teclado', async ({ page }) => {
   await page.goto('/');
   await upload(page, { count: 1 });
-  await page.getByRole('button', { name: 'Texto', exact: true }).click();
-  await page.locator('#text-content').fill('Mover');
+  await page.getByRole('button', { name: 'Inserir texto', exact: true }).click();
   await page.locator('#annotations').click({ position: { x: 80, y: 90 } });
+  await page.locator('#text-content').fill('Mover');
+  await page.locator('#apply-text').click();
   await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
   const text = page.locator('#annotations text');
   const b = await text.boundingBox();
@@ -146,8 +273,9 @@ test('seleciona, move, edita e exclui anotações com teclado', async ({ page })
   await page.mouse.move(b.x + 8, b.y + 8); await page.mouse.down();
   await page.mouse.move(b.x + 60, b.y + 40, { steps: 5 }); await page.mouse.up();
   expect(await text.getAttribute('x')).not.toBe(old);
+  await text.dblclick();
   await page.locator('#text-content').fill('Atualizado');
-  await page.locator('#text-content').blur();
+  await page.locator('#apply-text').click();
   await expect(text).toContainText('Atualizado');
   await page.locator('#annotations').click({ position: { x: 5, y: 5 } });
   await text.click();
@@ -163,9 +291,10 @@ test('arquivo inválido e texto não suportado apresentam erro sem perder docume
   await expect(page.locator('#toast')).toContainText('Não foi possível abrir');
   await expect(page.locator('#export')).toBeDisabled();
   await upload(page, { count: 1 });
-  await page.getByRole('button', { name: 'Texto', exact: true }).click();
-  await page.locator('#text-content').fill('Teste 🦄');
+  await page.getByRole('button', { name: 'Inserir texto', exact: true }).click();
   await page.locator('#annotations').click({ position: { x: 50, y: 100 } });
+  await page.locator('#text-content').fill('Teste 🦄');
+  await page.locator('#apply-text').click();
   await page.locator('#export').click();
   await expect(page.locator('#toast')).toContainText('não suporta');
   await expect(page.locator('#annotations text')).toContainText('Teste');
@@ -181,16 +310,17 @@ test('tela de entrada e edição no celular sem overflow horizontal', async ({ p
   await expect(page.locator('#page-count')).toHaveText('2');
   await expect(page.locator('#export')).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('button', { name: 'Texto', exact: true }).click();
-  await page.locator('#text-content').fill('Celular');
+  await page.getByRole('button', { name: 'Inserir texto', exact: true }).click();
   await page.locator('#annotations').click({ position: { x: 45, y: 80 } });
+  await page.locator('#text-content').fill('Celular');
+  await page.locator('#apply-text').click();
   await expect(page.locator('#annotations text')).toContainText('Celular');
   await page.screenshot({ path: 'test-results/editor-mobile.png', fullPage: true });
 });
 
 test('build funciona sob o caminho de um repositório no GitHub Pages', async ({ page, context }) => {
   const root = resolve('dist');
-  const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.ttf': 'font/ttf', '.svg': 'image/svg+xml' };
+  const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.ttf': 'font/ttf', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
   await context.route('**/folha-pdf-editor/**', async (route) => {
     const path = decodeURIComponent(new URL(route.request().url()).pathname.replace('/folha-pdf-editor/', '')) || 'index.html';
     const file = resolve(root, path);
@@ -204,9 +334,14 @@ test('build funciona sob o caminho de um repositório no GitHub Pages', async ({
   await page.screenshot({ path: 'test-results/inicio-desktop.png', fullPage: true });
   await page.locator('#demo').click();
   await expect(page.locator('#page-count')).toHaveText('2');
-  await page.getByRole('button', { name: 'Texto', exact: true }).click();
-  await page.locator('#text-content').fill('Produção com acentos');
+  await page.locator('[data-original]').filter({has:page.locator('title',{hasText:'Boas ideias merecem papel.'})}).click();
+  await expect(page.locator('#text-content')).toHaveValue('Boas ideias merecem papel.');
+  await page.locator('#text-content').fill('Título editado no PDF');
+  await page.locator('#apply-text').click();
+  await page.getByRole('button', { name: 'Inserir texto', exact: true }).click();
   await page.locator('#annotations').click({ position: { x: 50, y: 100 } });
+  await page.locator('#text-content').fill('Produção com acentos');
+  await page.locator('#apply-text').click();
   const { pdf } = await download(page);
   expect(pdf.getPageCount()).toBe(2);
   expect(errors).toEqual([]);
