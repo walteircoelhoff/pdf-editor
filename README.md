@@ -20,6 +20,7 @@ Abra o endereço mostrado pelo Vite, normalmente `http://127.0.0.1:5173`. Não a
 - Reconhecer trechos de texto existentes e substituí-los diretamente no conteúdo da página, sem deixar o trecho antigo na busca/cópia do PDF exportado.
 - Abrir a caixa de digitação no próprio ponto clicado, tanto para editar quanto para inserir texto.
 - Adicionar texto com acentos, cor, tamanho e várias linhas.
+- Aplicar negrito, itálico e sublinhado na própria caixa de edição, inclusive combinados, com formatação mantida na exportação. Os controles formatam o texto inteiro da caixa.
 - Destacar áreas, desenhar à mão livre e criar retângulos.
 - Inserir imagens PNG/JPEG e ajustar sua largura com proporção preservada.
 - Selecionar, mover, alterar a cor e excluir as anotações criadas na sessão.
@@ -33,7 +34,7 @@ Abra o endereço mostrado pelo Vite, normalmente `http://127.0.0.1:5173`. Não a
 
 1. Abra um PDF ou escolha o exemplo da tela inicial.
 2. Em **Editar texto**, clique em um dos trechos reconhecidos na folha. Altere o conteúdo na caixa que abre ali e clique em **Aplicar**, ou use Ctrl/Cmd+Enter. Para remover o trecho, apague seu conteúdo e aplique. **Cancelar** ou Escape mantém o texto anterior.
-3. Em **Inserir texto**, clique no ponto desejado e digite diretamente na caixa aberta sobre a página. Em **Marca-texto**, **Retângulo** ou **Desenhar**, arraste sobre a folha.
+3. Em **Inserir texto**, clique no ponto desejado e digite diretamente na caixa aberta sobre a página. Ajuste **Tamanho** na própria caixa (de 6 a 200 pt) e use **B**, **I** e **U** para negrito, itálico e sublinhado; a prévia acompanha as alterações. Você pode combinar os três estilos. O tamanho fica sincronizado com o painel lateral, e os controles também estão disponíveis ao editar texto existente. Em **Marca-texto**, **Retângulo** ou **Desenhar**, arraste sobre a folha.
 4. Em **Imagem**, escolha um PNG/JPEG e clique na folha. Com a imagem selecionada, ajuste a largura no painel.
 5. Em **Selecionar**, arraste uma anotação para movê-la. Dê dois cliques em um texto para abrir sua edição no local. Use **Excluir anotação** ou a tecla Delete para excluir a anotação selecionada.
 6. Escolha uma miniatura e use os controles de **Página atual** para organizar o documento. **Anterior** e **Próxima** movem a página na ordem do arquivo.
@@ -89,7 +90,7 @@ A suíte verifica upload, caixa de digitação no ponto clicado, substituição 
 - Não existe salvamento automático ou recuperação de sessão. Fechar/recarregar perde o trabalho ainda não baixado; o navegador pode mostrar o aviso de alterações pendentes.
 - **Editar texto** substitui um objeto de texto reconhecido: o objeto anterior é removido e o conteúdo novo é escrito na mesma posição de referência. As outras páginas e os objetos não editados continuam sendo copiados do PDF original; não há rasterização da página.
 - A edição acontece por trechos/objetos do PDF, que podem ser menores ou maiores que uma palavra ou linha. Não existe reorganização automática dos parágrafos. Um texto mais longo pode ocupar a área de outro conteúdo: confira o resultado.
-- A fonte dos trechos alterados é **Noto Sans regular**. Cor, tamanho aproximado, posição de referência e orientação são recuperados do original; fontes especiais, negrito, itálico, espaçamento, escalas desiguais e efeitos de texto podem mudar. A aparência exata não é garantida.
+- A fonte dos trechos alterados é **Noto Sans**, com variantes regular, negrito, itálico e negrito/itálico conforme os controles da caixa. O sublinhado é gravado como traços sob cada linha. Cor, tamanho aproximado, posição de referência e orientação são recuperados do original; os estilos originais não são detectados automaticamente e podem ser definidos manualmente. Fontes especiais, espaçamento, escalas desiguais e efeitos de texto podem mudar. A aparência exata não é garantida.
 - Não há OCR. Digitalizações, texto convertido em curvas e objetos sem texto Unicode recuperável não são editáveis como texto. A interface informa quando não encontra trechos editáveis. Objetos de texto compartilhados em múltiplas instâncias dentro da mesma página podem ficar indisponíveis para evitar alterar outras ocorrências.
 - Não há conversão para Word, compressão ou edição de formulários. Esta função não constitui ferramenta de remoção forense de informações: recursos, metadados e anexos podem conter dados adicionais.
 - Retângulos e marcações **não são tarja segura nem removem informações do PDF**. Não os use para ocultar dados confidenciais.

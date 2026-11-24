@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, degrees, StandardFonts, rgb, PDFArray, PDFDict, PDFName, decodePDFRawStream } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 
@@ -21,6 +21,40 @@ async function upload(page, payload = {}) {
   await expect.poll(() => page.locator('#page-canvas').evaluate((el) => el.width)).toBeGreaterThan(0);
   await expect(page.locator('#text-reading-status')).not.toContainText('Lendo');
 }
+
+for (const styles of [['Negrito'],['Itálico'],['Sublinhado'],['Negrito','Itálico','Sublinhado']]) test(`formatação ${styles.join(', ')} fica na caixa e no PDF exportado`,async ({page}) => {
+  await page.goto('/');
+  await upload(page,{count:1,rotation:styles.length===3 ? 90 : 0});
+  await page.getByRole('button',{name:'Inserir texto',exact:true}).click();
+  await page.locator('#annotations').click({position:{x:70,y:180}});
+  await page.locator('#text-content').fill('Estilo aplicado\nSegunda linha');
+  for (const style of styles) {
+    await page.getByRole('button',{name:style,exact:true}).click();
+    await expect(page.getByRole('button',{name:style,exact:true})).toHaveAttribute('aria-pressed','true');
+  }
+  await expect(page.locator('#text-content')).toHaveCSS('font-weight',styles.includes('Negrito')?'700':'400');
+  await expect(page.locator('#text-content')).toHaveCSS('font-style',styles.includes('Itálico')?'italic':'normal');
+  await page.locator('#apply-text').click();
+  await page.locator('#annotations text').dblclick();
+  for (const style of styles) await expect(page.getByRole('button',{name:style,exact:true})).toHaveAttribute('aria-pressed','true');
+  if (styles.length===3) await page.screenshot({path:'test-results/formatacao-texto.png',fullPage:true});
+  await page.getByRole('button',{name:styles[0],exact:true}).click();
+  await page.locator('#cancel-text').click();
+  const {pdf,data}=await download(page);
+  const text=(await extract(page,data))[0];
+  expect(text).toContain('Estilo aplicado');
+  expect(text).toContain('Segunda linha');
+  const resources=pdf.getPage(0).node.Resources().lookup(PDFName.of('Font'),PDFDict);
+  const names=resources.entries().map(([,ref])=>pdf.context.lookup(ref,PDFDict).get(PDFName.of('BaseFont')).toString());
+  const expected=styles.includes('Negrito')?(styles.includes('Itálico')?'NotoSans-BoldItalic':'NotoSans-Bold'):(styles.includes('Itálico')?'NotoSans-Italic':'NotoSans-Regular');
+  expect(names.some((name)=>name.includes(expected))).toBe(true);
+  if (styles.includes('Sublinhado')) {
+    const streams=pdf.getPage(0).node.Contents();
+    const refs=streams instanceof PDFArray?streams.asArray():[streams];
+    const content=refs.map((ref)=>Buffer.from(decodePDFRawStream(pdf.context.lookup(ref)).decode()).toString('latin1')).join('\n');
+    expect((content.match(/\nS\n/g)||[]).length).toBeGreaterThanOrEqual(2);
+  }
+});
 
 test('substitui texto original, remove o antigo da extração e preserva a outra página', async ({ page }) => {
   await page.goto('/');
@@ -58,8 +92,22 @@ test('inserção abre no ponto clicado, cancelar preserva a página e baixar apl
   await expect(page.locator('#annotations text')).toHaveCount(0);
   await page.locator('#annotations').click({ position:{ x:80,y:180 } });
   await page.locator('#text-content').fill('Aplicar ao baixar');
+  await page.getByRole('spinbutton',{name:'Tamanho da letra'}).fill('32');
+  await expect(page.locator('#font-size')).toHaveValue('32');
+  await page.locator('#font-size').fill('24');
+  await expect(page.locator('#inline-font-size')).toHaveValue('24');
+  await page.locator('#inline-font-size').fill('32');
   const { data } = await download(page);
   expect((await extract(page,data))[0]).toContain('Aplicar ao baixar');
+  const exportedSize = await page.evaluate(async (bytes) => {
+    const pdfjs = await import('/node_modules/pdfjs-dist/build/pdf.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
+    const doc = await pdfjs.getDocument({data:Uint8Array.from(bytes)}).promise;
+    const text = await (await doc.getPage(1)).getTextContent();
+    const item = text.items.find((i) => i.str === 'Aplicar ao baixar');
+    return Math.hypot(item.transform[0],item.transform[1]);
+  },[...data]);
+  expect(exportedSize).toBeCloseTo(32,1);
 });
 
 for (const rotation of [0,90,180,270]) test(`substituição de texto original com rotação ${rotation} e recorte mantém posição e orientação`,async ({ page }) => {

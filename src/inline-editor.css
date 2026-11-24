@@ -9,13 +9,18 @@
   color: #20314f;
   max-width: 100%;
 }
-#inline-editor > label {
+.inline-heading > label {
   display: block;
   font-size: .75rem;
   font-weight: 600;
   color: #526a9d;
   margin: 0 0 7px;
 }
+.inline-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.inline-heading > label { margin: 0; }
+.inline-size { display: flex; align-items: center; gap: 6px; font-size: .875rem; color: #526a9d; }
+.inline-size span { display: flex; align-items: center; gap: 4px; font-size: .75rem; }
+#inline-font-size { width: 68px; padding: 5px; font-size: .875rem; color: #20314f; border: 1px solid #dce4f6; border-radius: 4px; }
 #inline-editor textarea {
   display: block;
   width: 100%;
@@ -25,7 +30,7 @@
   border: 1px solid #dce4f6;
   border-radius: 4px;
   padding: 5px;
-  font-family: 'Noto Sans', sans-serif;
+  font-family: 'Noto Sans Document', sans-serif;
   line-height: 1.4;
   background: #fff;
 }
@@ -39,6 +44,10 @@
 }
 .inline-actions > span { font-size: .65rem; color: #7a89a0; margin-right: auto; }
 .inline-actions button { font-size: .875rem; padding: 6px 9px; }
+.inline-formatting { display: flex; gap: 5px; margin-bottom: 8px; }
+.inline-formatting button { width: 34px; height: 32px; padding: 4px; border: 1px solid #dce4f6; border-radius: 4px; font-size: 1rem; }
+.inline-formatting button[aria-pressed=true] { background: #eaf0ff; border-color: #8ea6f4; color: #234bd7; }
+.underline-label { text-decoration: underline; }
 #font-size { width: 100%; border: 1px solid #dce2ec; border-radius: 5px; padding: 8px 10px; color: inherit; }
 .text-reading-status { font-size: .75rem; line-height: 1.7; color: #718098; margin: 12px 0 18px; }
 .original-text-hit { pointer-events: none; }
@@ -52,6 +61,10 @@
 @media (max-width: 1100px) { .tool { padding-left: 9px; padding-right: 9px; } }
 @media (max-width: 640px) {
   .tool { width: 35px; padding: 8px; }
-  #inline-editor textarea { font-size: 16px !important; }
+  #inline-font-size { font-size: 16px; }
   .inline-actions > span { display: none; }
 }
+@font-face { font-family: 'Noto Sans Document'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/NotoSans-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Noto Sans Document'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/NotoSans-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Noto Sans Document'; font-style: italic; font-weight: 400; font-display: swap; src: url('/fonts/NotoSans-Italic.ttf') format('truetype'); }
+@font-face { font-family: 'Noto Sans Document'; font-style: italic; font-weight: 700; font-display: swap; src: url('/fonts/NotoSans-BoldItalic.ttf') format('truetype'); }

@@ -43,7 +43,7 @@ $('#app').innerHTML = `
         <button id="demo" class="text-button">Experimentar com um documento de exemplo</button>
         <div class="local-note">${icon('lock-keyhole')} Tudo acontece no seu navegador. Sem cadastro.</div>
       </div>
-      <div id="editor" hidden><div class="page-label"><span id="current-label">Página 1</span><span id="page-size"></span></div><div id="page-shell"><canvas id="page-canvas"></canvas><svg id="annotations" xmlns="http://www.w3.org/2000/svg" aria-label="Anotações da página"></svg><form id="inline-editor" hidden aria-label="Editar texto na página"><label for="text-content" id="inline-title">Inserir texto</label><textarea id="text-content" rows="2" placeholder="Digite aqui…" spellcheck="true"></textarea><div class="inline-actions"><span>Ctrl+Enter para aplicar</span><button type="button" id="cancel-text">Cancelar</button><button type="submit" id="apply-text" class="primary">Aplicar</button></div></form></div><p class="desk-hint" id="tool-hint">Selecione uma anotação para mover ou excluir.</p></div>
+      <div id="editor" hidden><div class="page-label"><span id="current-label">Página 1</span><span id="page-size"></span></div><div id="page-shell"><canvas id="page-canvas"></canvas><svg id="annotations" xmlns="http://www.w3.org/2000/svg" aria-label="Anotações da página"></svg><form id="inline-editor" hidden aria-label="Editar texto na página"><div class="inline-heading"><label for="text-content" id="inline-title">Inserir texto</label><label class="inline-size" for="inline-font-size">Tamanho <span><input id="inline-font-size" type="number" min="6" max="200" step="any" value="20" inputmode="decimal" required aria-label="Tamanho da letra">pt</span></label></div><textarea id="text-content" rows="2" placeholder="Digite aqui…" spellcheck="true"></textarea><div class="inline-actions"><span>Ctrl+Enter para aplicar</span><button type="button" id="cancel-text">Cancelar</button><button type="submit" id="apply-text" class="primary">Aplicar</button></div></form></div><p class="desk-hint" id="tool-hint">Selecione uma anotação para mover ou excluir.</p></div>
     </section>
     <aside class="inspector" aria-label="Propriedades">
       <div class="inspector-title">${icon('sliders-horizontal')} Ajustes</div>
@@ -67,6 +67,7 @@ $('#app').innerHTML = `
 `;
 
 createIcons({ icons });
+$('#text-content').insertAdjacentHTML('beforebegin', `<div class="inline-formatting" role="group" aria-label="Formatação do texto"><button type="button" data-text-style="bold" aria-label="Negrito" title="Negrito" aria-pressed="false"><strong>B</strong></button><button type="button" data-text-style="italic" aria-label="Itálico" title="Itálico" aria-pressed="false"><em>I</em></button><button type="button" data-text-style="underline" aria-label="Sublinhado" title="Sublinhado" aria-pressed="false"><span class="underline-label">U</span></button></div>`);
 $('#text-content').wrap = 'off';
 const state = { pages: [], current: 0, sources: new Map(), tool: 'select', color: '#20314f', size: 20, stroke: 3, selected: null, zoom: 1, past: [], future: [], dirty: false, busy: false };
 let renderVersion = 0;
@@ -353,7 +354,7 @@ function drawAnnotations() {
     let el;
     if (item.type === 'text') {
       if (!item.text) continue;
-      el = svgEl('text', { x: item.x, y: item.y + item.size * 1.07, fill: item.color, 'font-size': item.size, 'font-family': 'Noto Sans', 'xml:space': 'preserve', transform:`rotate(${item.angle || 0} ${item.x} ${item.y+item.size*1.07})` });
+      el = svgEl('text', { x: item.x, y: item.y + item.size * 1.07, fill: item.color, 'font-size': item.size, 'font-family': 'Noto Sans Document', 'font-weight':item.bold ? 700 : 400, 'font-style':item.italic ? 'italic' : 'normal', 'text-decoration':item.underline ? 'underline' : 'none', 'xml:space': 'preserve', transform:`rotate(${item.angle || 0} ${item.x} ${item.y+item.size*1.07})` });
       item.text.split('\n').forEach((line, index) => {
         const span = svgEl('tspan', { x: item.x, dy: index ? item.size * 1.4 : 0 });
         span.textContent = line || ' ';
@@ -381,7 +382,7 @@ function coords(event) {
 }
 function measureText(item) {
   const ctx = document.createElement('canvas').getContext('2d');
-  ctx.font = `${item.size}px "Noto Sans"`;
+  ctx.font = `${item.italic ? 'italic ' : ''}${item.bold ? 700 : 400} ${item.size}px "Noto Sans Document"`;
   item.w = Math.max(8, ...item.text.split('\n').map((line) => ctx.measureText(line).width));
   item.h = item.text.split('\n').length * item.size * 1.4;
 }
@@ -411,6 +412,10 @@ function positionTextEditor() {
   el.style.top = `${Math.max(0,Math.min(item.y*state.zoom,current().height*state.zoom-125))}px`;
   $('#text-content').style.fontSize = `${Math.max(14,item.size*state.zoom)}px`;
   $('#text-content').style.color = item.color;
+  $('#text-content').style.fontWeight = item.bold ? '700' : '400';
+  $('#text-content').style.fontStyle = item.italic ? 'italic' : 'normal';
+  $('#text-content').style.textDecoration = item.underline ? 'underline' : 'none';
+  document.querySelectorAll('[data-text-style]').forEach((button) => button.setAttribute('aria-pressed',!!item[button.dataset.textStyle]));
 }
 function openTextEditor({ position, item, block } = {}) {
   if (!closeTextEditor(true)) return;
@@ -421,6 +426,7 @@ function openTextEditor({ position, item, block } = {}) {
   draft = { pageId:current().id,existing:!!item,original:structuredClone(value),item:value };
   state.selected = item?.id || null;
   $('#font-size').value = value.size;
+  $('#inline-font-size').value = value.size;
   setColor(value.color);
   $('#text-settings').hidden = false;
   $('#inline-title').textContent = block || item?.originalKey ? 'Editar texto do PDF' : item ? 'Editar texto' : 'Inserir texto';
@@ -435,9 +441,9 @@ function closeTextEditor(save) {
   const active = draft;
   if (save && current()?.id === active.pageId) {
     const size = +$('#font-size').value;
-    if (!Number.isFinite(size) || size < 6 || size > 200) { toast('Escolha um tamanho entre 6 e 200 pontos.',true); $('#font-size').focus(); return false; }
+    if (!Number.isFinite(size) || size < 6 || size > 200) { toast('Escolha um tamanho entre 6 e 200 pontos.',true); $('#inline-font-size').focus(); return false; }
     const value = { ...active.item,text:$('#text-content').value,size };
-    const changed = value.text !== active.original.text || value.size !== active.original.size || value.color !== active.original.color;
+    const changed = value.text !== active.original.text || value.size !== active.original.size || value.color !== active.original.color || ['bold','italic','underline'].some((style) => !!value[style] !== !!active.original[style]);
     if (changed && (value.text.trim() || value.originalKey || active.existing)) {
       remember(); measureText(value);
       const index = current().items.findIndex((i) => i.id === value.id);
@@ -454,6 +460,15 @@ function closeTextEditor(save) {
 }
 $('#inline-editor').onsubmit = (event) => { event.preventDefault(); closeTextEditor(true); };
 $('#cancel-text').onclick = () => closeTextEditor(false);
+document.querySelectorAll('[data-text-style]').forEach((button) => {
+  button.onclick = () => {
+    if (!draft) return;
+    const style = button.dataset.textStyle;
+    draft.item[style] = !draft.item[style];
+    positionTextEditor();
+    document.fonts.load(`${draft.item.italic ? 'italic ' : ''}${draft.item.bold ? 700 : 400} ${draft.item.size}px "Noto Sans Document"`).catch(() => {});
+  };
+});
 $('#text-content').addEventListener('keydown',(event) => {
   if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeTextEditor(false); }
   else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); closeTextEditor(true); }
@@ -549,7 +564,12 @@ function deleteItem() {
   drawAnnotations(); syncControls(); renderThumbnails();
 }
 function updateText() {
-  if (draft) { draft.item.size = textSize(); positionTextEditor(); return; }
+  if (draft) {
+    $('#inline-font-size').value = $('#font-size').value;
+    const size = +$('#font-size').value;
+    if (Number.isFinite(size) && size >= 6 && size <= 200) { draft.item.size = size; positionTextEditor(); }
+    return;
+  }
   const item = current()?.items.find((i) => i.id === state.selected);
   if (item?.type !== 'text') return;
   if (item.size === textSize()) return;
@@ -557,6 +577,11 @@ function updateText() {
   measureText(item); drawAnnotations(); syncControls();
 }
 $('#font-size').addEventListener('change', updateText);
+$('#font-size').addEventListener('input',() => { if (draft) updateText(); });
+$('#inline-font-size').addEventListener('input',() => {
+  $('#font-size').value = $('#inline-font-size').value;
+  updateText();
+});
 function updateColor(value) {
   setColor(value);
   if (draft) { draft.item.color = value; positionTextEditor(); return; }
@@ -621,7 +646,7 @@ $('#rotate').onclick = async () => {
   if (!closeTextEditor(true)) return;
   setBusy(true, 'Girando página…');
   try {
-    const bytes = await exportDocument([current()], state.sources, await fontBytes());
+    const bytes = await exportDocument([current()], state.sources, fontBytes);
     const pages = await makeSource(bytes);
     const replacement = pages[0];
     replacement.rotation = (replacement.rotation + 90) % 360;
@@ -630,14 +655,20 @@ $('#rotate').onclick = async () => {
   } catch (error) { toast(error.message || 'Não foi possível girar a página.', true); }
   finally { setBusy(false); await refresh(); }
 };
-let fontPromise;
-function fontBytes() { return fontPromise ||= fetch(`${import.meta.env.BASE_URL}fonts/NotoSans-Regular.ttf`).then((res) => { if (!res.ok) throw new Error('Não foi possível carregar a fonte. Recarregue a página.'); return res.arrayBuffer(); }).catch((error) => { fontPromise = null; throw error; }); }
+const fontPromises = new Map();
+function fontBytes(style = 'Regular') {
+  if (!fontPromises.has(style)) fontPromises.set(style,fetch(`${import.meta.env.BASE_URL}fonts/NotoSans-${style}.ttf`).then((res) => {
+    if (!res.ok) throw new Error('Não foi possível carregar a fonte. Recarregue a página.');
+    return res.arrayBuffer();
+  }).catch((error) => { fontPromises.delete(style); throw error; }));
+  return fontPromises.get(style);
+}
 $('#export').onclick = async () => {
   if (!current() || state.busy) return;
   if (!closeTextEditor(true)) return;
   setBusy(true, 'Preparando seu PDF…');
   try {
-    const bytes = await exportDocument(state.pages, state.sources, await fontBytes());
+    const bytes = await exportDocument(state.pages, state.sources, fontBytes);
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const a = document.createElement('a'); a.href = url;
     a.download = `${($('#filename').value.trim() || 'Meu documento').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\.pdf$/i, '')}-editado.pdf`;
